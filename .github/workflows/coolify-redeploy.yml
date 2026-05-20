@@ -1,0 +1,64 @@
+name: Coolify Redeploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+
+jobs:
+  redeploy:
+    if: github.event_name == 'push' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Build changes payload
+        id: changes
+        shell: bash
+        run: |
+          BEFORE_SHA="${{ github.event.before }}"
+          AFTER_SHA="${{ github.sha }}"
+
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            FILES="$(git show --name-only --pretty='' "$AFTER_SHA" | tr '\n' ',' | sed 's/,$//')"
+          else
+            FILES="$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" | tr '\n' ',' | sed 's/,$//')"
+          fi
+
+          echo "files=$FILES" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Coolify deployment webhook
+        env:
+          COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message || github.event.pull_request.title }}
+          CHANGED_FILES: ${{ steps.changes.outputs.files }}
+        run: |
+          if [ -z "$COOLIFY_DEPLOY_WEBHOOK" ]; then
+            echo "Secret COOLIFY_DEPLOY_WEBHOOK is not set"
+            exit 1
+          fi
+
+          PAYLOAD="$(jq -nc \
+            --arg event "$EVENT_NAME" \
+            --arg branch "$REF_NAME" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg actor "$ACTOR" \
+            --arg message "$COMMIT_MESSAGE" \
+            --arg changed_files "${CHANGED_FILES:-none}" \
+            '{event:$event, branch:$branch, commit_sha:$commit_sha, actor:$actor, message:$message, changed_files:$changed_files}')"
+
+          curl -fsS -X POST "$COOLIFY_DEPLOY_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"

@@ -6,7 +6,12 @@
 const Anthropic = require('@anthropic-ai/sdk')
 const prompts   = require('./prompts')
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+function getAnthropicApiKey() {
+  const raw = process.env.ANTHROPIC_API_KEY
+  if (!raw) return null
+  const key = String(raw).trim().replace(/^['"]|['"]$/g, '')
+  return key.length > 0 ? key : null
+}
 
 // Tipos que usam HAIKU — só texto, revisões técnicas de copy
 const HAIKU_TYPES = [
@@ -23,6 +28,11 @@ const SONNET_VISION_TYPES = [
 const PRODUTO_TYPES = ['congruencia', 'completa', 'completa_copy', 'completa_total']
 
 async function reviewText(text, tipo, produto, screenshot = null) {
+  const apiKey = getAnthropicApiKey()
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY ausente no ambiente. Configure a variável no Coolify e faça redeploy.')
+  }
+  const client = new Anthropic({ apiKey })
 
   // Seleciona o system prompt
   let systemPrompt
