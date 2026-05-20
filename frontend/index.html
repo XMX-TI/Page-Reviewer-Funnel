@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XMX · Review Funnel</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-inner">
+        <div class="logo">
+          <img
+            src="logo-xmx.png"
+            alt="XMX"
+            class="logo-img"
+            onerror="
+              this.style.display = 'none';
+              document.querySelector('.logo-text').style.display = 'block';
+            "
+          />
+          <span class="logo-text" style="display: none">XMX</span>
+          <span class="logo-label">Review Funnel</span>
+        </div>
+        <div class="header-right">
+          <span class="date" id="headerDate"></span>
+          <button class="btn-config" id="openConfig">⚙ Configurações</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="container">
+        <div class="page-title">
+          <h1>Nova Revisão</h1>
+          <p>
+            Cole o link da página ou arquivo Figma e escolha o tipo de revisão.
+          </p>
+        </div>
+
+        <form id="reviewForm">
+          <!-- SEÇÃO: PÁGINA -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Página a Revisar</span>
+              <span class="card-sub">URL da página web ou arquivo Figma</span>
+            </div>
+            <div class="card-body">
+              <div class="field">
+                <label for="link">Link da página ou arquivo Figma</label>
+                <input
+                  type="text"
+                  id="link"
+                  name="link"
+                  placeholder="https://exemplo.com ou https://figma.com/file/..."
+                />
+              </div>
+              <div class="field">
+                <label for="textoManual"
+                  >Ou cole o texto aqui
+                  <span class="optional"
+                    >(use quando a página bloquear acesso automático)</span
+                  ></label
+                >
+                <textarea
+                  id="textoManual"
+                  name="textoManual"
+                  placeholder="Cole o conteúdo da página aqui..."
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEÇÃO: PRODUTO -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Produto</span>
+              <span class="card-sub"
+                >Nome do produto para revisão de congruência</span
+              >
+            </div>
+            <div class="card-body">
+              <div class="field">
+                <label for="produto">Nome do produto</label>
+                <input
+                  type="text"
+                  id="produto"
+                  name="produto"
+                  placeholder="Ex: GlucoOff, Sciatilief, Cognivex..."
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- SEÇÃO: TIPO DE REVISÃO -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Tipo de Revisão</span>
+              <span class="card-sub"
+                >Selecione o que deve ser verificado na página</span
+              >
+            </div>
+            <div class="card-body">
+              <div class="field">
+                <label for="tipo">Tipo de revisão</label>
+                <select id="tipo" name="tipo">
+                  <option value="">— Selecione o tipo —</option>
+                  <optgroup label="── Revisões Técnicas de Copy ──">
+                    <option value="completa_copy">
+                      ✅ Revisão Completa Copy
+                    </option>
+                  </optgroup>
+                  <optgroup label="── Revisão de Funil ──">
+                    <option value="figma_funil">🎨 Revisão Figma</option>
+                    <option value="page_funil">
+                      📄 Revisão de Página (DTC/VSL/TSL)
+                    </option>
+                    <option value="upsell">🔼 Revisão de Upsell</option>
+                  </optgroup>
+                  <optgroup label="── Revisão Completa ──">
+                    <option value="completa_total">
+                      🚀 Revisão Completa (Copy + Figma + Página + Upsell)
+                    </option>
+                  </optgroup>
+                </select>
+                <div class="tipo-desc hidden" id="tipoDesc"></div>
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" id="submitBtn">Revisar Página</button>
+        </form>
+
+        <!-- RESULTADO -->
+        <div id="resultSection" class="card hidden">
+          <div class="card-body">
+            <div class="report-header">
+              <h2>Relatório de Revisão</h2>
+              <button id="copyBtn">Copiar</button>
+            </div>
+            <div class="meta-bar" id="metaBar"></div>
+            <div class="report" id="reportContent"></div>
+            <div class="token-info" id="tokenInfo"></div>
+            <button class="btn-secondary" id="newReview">Nova Revisão</button>
+          </div>
+        </div>
+
+        <!-- ERRO -->
+        <div id="errorSection" class="card hidden">
+          <div class="card-body">
+            <div class="error-box" id="errorContent"></div>
+            <button class="btn-secondary" id="tryAgain">
+              Tentar novamente
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <span>page-reviewer · revisão com IA</span>
+      <span id="footerDate"></span>
+    </footer>
+
+    <!-- MODAL CONFIGURAÇÕES -->
+    <div id="configModal" class="modal hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Configurações</h3>
+          <button class="modal-close" id="closeConfig">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="apiKey">Chave da API Anthropic</label>
+            <input type="password" id="apiKey" placeholder="sk-ant-..." />
+            <p class="field-hint" id="apiStatus">Verificando...</p>
+          </div>
+          <div class="field">
+            <label for="figmaToken">Token do Figma</label>
+            <input type="password" id="figmaToken" placeholder="figd_..." />
+            <p class="field-hint">Necessário para revisão de arquivos Figma</p>
+          </div>
+          <button class="btn-save" id="saveConfig">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
