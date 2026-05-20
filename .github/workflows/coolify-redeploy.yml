@@ -24,10 +24,15 @@ jobs:
         id: changes
         shell: bash
         run: |
+          EVENT_NAME="${{ github.event_name }}"
           BEFORE_SHA="${{ github.event.before }}"
           AFTER_SHA="${{ github.sha }}"
+          PR_BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
 
-          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_BASE_SHA" ] && [ -n "$PR_HEAD_SHA" ]; then
+            FILES="$(git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" | tr '\n' ',' | sed 's/,$//')"
+          elif [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
             FILES="$(git show --name-only --pretty='' "$AFTER_SHA" | tr '\n' ',' | sed 's/,$//')"
           else
             FILES="$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" | tr '\n' ',' | sed 's/,$//')"
@@ -45,8 +50,15 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message || github.event.pull_request.title }}
           CHANGED_FILES: ${{ steps.changes.outputs.files }}
         run: |
-          if [ -z "$COOLIFY_DEPLOY_WEBHOOK" ]; then
-            echo "Secret COOLIFY_DEPLOY_WEBHOOK is not set"
+          WEBHOOK="$(echo "$COOLIFY_DEPLOY_WEBHOOK" | tr -d '[:space:]')"
+
+          if [ -z "$WEBHOOK" ]; then
+            echo "Secret COOLIFY_DEPLOY_WEBHOOK is not set."
+            exit 1
+          fi
+
+          if ! [[ "$WEBHOOK" =~ ^https?:// ]]; then
+            echo "Secret COOLIFY_DEPLOY_WEBHOOK is invalid. It must start with http:// or https://."
             exit 1
           fi
 
@@ -57,8 +69,8 @@ jobs:
             --arg actor "$ACTOR" \
             --arg message "$COMMIT_MESSAGE" \
             --arg changed_files "${CHANGED_FILES:-none}" \
-            '{event:$event, branch:$branch, commit_sha:$commit_sha, actor:$actor, message:$message, changed_files:$changed_files}')"
+            '{event:$event, branch:$branch, commit_sha:$commit_sha, actor:$actor, message:$message, changed_files:($changed_files | split(",") | map(select(length > 0)))}')"
 
-          curl -fsS -X POST "$COOLIFY_DEPLOY_WEBHOOK" \
+          curl -fsS -X POST "$WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
