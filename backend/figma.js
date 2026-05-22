@@ -1,27 +1,28 @@
 // figma.js
-// Extrai todos os textos de um arquivo Figma via API REST
-// Percorre os nós recursivamente e coleta apenas nós do tipo TEXT
+// Extrai texto E imagem de um arquivo Figma via API REST
+// A imagem é gerada pela API do Figma e enviada para o Claude analisar visualmente
 
 const axios = require('axios')
 
-function extractFileKey(figmaUrl) {
+function extractFileKeyAndNodeId(figmaUrl) {
   try {
     const url   = new URL(figmaUrl)
     const parts = url.pathname.split('/')
 
-    const fileIndex = parts.indexOf('file')
-    if (fileIndex !== -1 && parts[fileIndex + 1]) {
-      return parts[fileIndex + 1]
-    }
-
+    let fileKey = null
+    const fileIndex   = parts.indexOf('file')
     const designIndex = parts.indexOf('design')
-    if (designIndex !== -1 && parts[designIndex + 1]) {
-      return parts[designIndex + 1]
+
+    if (fileIndex !== -1 && parts[fileIndex + 1]) {
+      fileKey = parts[fileIndex + 1]
+    } else if (designIndex !== -1 && parts[designIndex + 1]) {
+      fileKey = parts[designIndex + 1]
     }
 
-    return null
+    const nodeId = url.searchParams.get('node-id') || null
+    return { fileKey, nodeId }
   } catch {
-    return null
+    return { fileKey: null, nodeId: null }
   }
 }
 
@@ -42,41 +43,91 @@ async function extractTextFromFigma(figmaUrl) {
   const token = process.env.FIGMA_TOKEN
 
   if (!token || token === 'figd_coloque-seu-token-aqui') {
-    return { success: false, error: 'Token do Figma não configurado no arquivo .env' }
+    return { success: false, error: 'Token do Figma não configurado. Acesse Configurações e adicione seu token.' }
   }
 
-  const fileKey = extractFileKey(figmaUrl)
+  const { fileKey, nodeId } = extractFileKeyAndNodeId(figmaUrl)
+
   if (!fileKey) {
     return { success: false, error: 'Não foi possível extrair o file_key da URL do Figma. Verifique o link.' }
   }
 
   try {
-    const response = await axios.get(`https://api.figma.com/v1/files/${fileKey}`, {
+    // STEP 1: Get text content from file
+    const fileRes = await axios.get(`https://api.figma.com/v1/files/${fileKey}`, {
       timeout: 30000,
       headers: { 'X-Figma-Token': token }
     })
 
-    const document = response.data.document
+    const document = fileRes.data.document
     const texts    = collectTextNodes(document)
-
-    if (texts.length === 0) {
-      return { success: false, error: 'Nenhum texto encontrado no arquivo Figma. Verifique se o link tem acesso público.' }
+    let textContent = texts.join('\n')
+    if (textContent.length > 12000) {
+      textContent = textContent.substring(0, 12000) + '\n\n[... texto truncado ...]'
     }
 
-    let combined = texts.join('\n')
-    if (combined.length > 8000) {
-      combined = combined.substring(0, 8000) + '\n\n[... texto truncado ...]'
+    // STEP 2: Get image render from Figma API
+    let screenshotBase64 = null
+
+    try {
+      let nodeIds = nodeId ? nodeId.replace('-', ':') : null
+
+      if (!nodeIds) {
+        const firstPage = document.children?.[0]
+        if (firstPage?.children?.length > 0) {
+          nodeIds = firstPage.children
+            .slice(0, 4)
+            .map(n => n.id)
+            .join(',')
+        }
+      }
+
+      if (nodeIds) {
+        console.log(`[Figma] Gerando imagem para nodes: ${nodeIds}`)
+
+        const imgRes = await axios.get(
+          `https://api.figma.com/v1/images/${fileKey}`,
+          {
+            timeout: 30000,
+            headers: { 'X-Figma-Token': token },
+            params: { ids: nodeIds, format: 'jpg', scale: 1 }
+          }
+        )
+
+        const imageUrls = imgRes.data.images || {}
+        const firstUrl  = Object.values(imageUrls)[0]
+
+        if (firstUrl) {
+          console.log(`[Figma] Baixando imagem: ${firstUrl}`)
+          const imgData = await axios.get(firstUrl, {
+            responseType: 'arraybuffer',
+            timeout: 30000
+          })
+          screenshotBase64 = Buffer.from(imgData.data).toString('base64')
+          console.log(`[Figma] Imagem: ${Math.round(imgData.data.byteLength / 1024)}KB`)
+        }
+      }
+    } catch (imgError) {
+      console.warn('[Figma] Aviso: imagem não disponível:', imgError.message)
     }
 
-    return { success: true, text: combined, charCount: combined.length, totalTexts: texts.length }
+    if (texts.length === 0 && !screenshotBase64) {
+      return { success: false, error: 'Nenhum conteúdo encontrado no arquivo Figma. Verifique se o link tem acesso.' }
+    }
+
+    return {
+      success:    true,
+      text:       textContent,
+      screenshot: screenshotBase64,
+      charCount:  textContent.length,
+      totalTexts: texts.length
+    }
 
   } catch (error) {
-    if (error.response?.status === 403) {
+    if (error.response?.status === 403)
       return { success: false, error: 'Acesso negado ao Figma. Verifique se o arquivo é público ou se o token está correto.' }
-    }
-    if (error.response?.status === 404) {
+    if (error.response?.status === 404)
       return { success: false, error: 'Arquivo Figma não encontrado. Verifique o link.' }
-    }
     return { success: false, error: `Erro ao acessar o Figma: ${error.message}` }
   }
 }
