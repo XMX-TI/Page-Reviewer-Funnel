@@ -7,6 +7,12 @@ node_modules/
 !.env.example
 !.env.sample
 !.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+serviceAccount*.json
 
 # Logs
 logs/
@@ -67,6 +73,7 @@ Desktop.ini
 *.sln
 *.swp
 *.swo
+*.sublime-workspace
 *~
 
 # Archives
@@ -80,3 +87,4 @@ Desktop.ini
 # Optional local data
 *.sqlite
 *.sqlite3
+*.bak
